@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     # 使用包含 Java 25 的容器作为构建环境
     container:
-      image: eclipse-temurin:25.0.1_8-jdk-ubi10-minimal
+      image: maven:3.9.12-eclipse-temurin-25-alpine
     steps:
       - uses: actions/checkout@v4
 
