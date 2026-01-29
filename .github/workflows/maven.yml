@@ -59,3 +59,30 @@ jobs:
           # 构建并推送
           docker build . --file Dockerfile --tag $IMAGE_ID:latest
           docker push $IMAGE_ID:latest
+
+      - name: Deploy to Server via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            # 1. 登录 GHCR (如果镜像设为 Public 可省略此步)
+            # echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            
+            # 定义镜像名 (保持和小写转换逻辑一致)
+            IMAGE_ID=ghcr.io/${{ github.repository_owner }}/my-app
+            IMAGE_ID=$(echo $IMAGE_ID | tr '[A-Z]' '[a-z]')
+            
+            # 2. 停止并删除旧容器 (如果存在)
+            docker stop my-app-container || true
+            docker rm my-app-container || true
+            
+            # 3. 拉取最新镜像
+            docker pull $IMAGE_ID:latest
+            
+            # 4. 启动新容器
+            # -d: 后台运行
+            # -p 8080:8080: 端口映射 (根据你的 Spring Boot 配置调整)
+            # --name: 给容器起个固定名字，方便下次停止
+            docker run -d -p 8080:8080 --name my-app-container $IMAGE_ID:latest
