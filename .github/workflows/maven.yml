@@ -67,24 +67,50 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            # 1. 登录 GHCR (如果镜像设为 Public 可省略此步)
-            # echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-            
-            # 定义镜像名 (保持和小写转换逻辑一致)
+            # 1. 准备工作：定义变量
             IMAGE_ID=ghcr.io/${{ github.repository_owner }}/my-app
             IMAGE_ID=$(echo $IMAGE_ID | tr '[A-Z]' '[a-z]')
             
-            # 2. 停止并删除旧容器 (如果存在)
-            docker stop my-app-container || true
-            docker rm my-app-container || true
-            
-            # 3. 拉取最新镜像
+            # 2. 拉取最新镜像 (先拉取，确保镜像没问题再动容器)
             docker pull $IMAGE_ID:latest
+            
+            # 3. 备份当前运行的容器 (如果有的话)
+            # 如果容器正在运行，先停止，然后重命名为 backup
+            if [ "$(docker ps -q -f name=my-app-container)" ]; then
+                docker stop my-app-container
+                docker rename my-app-container my-app-backup
+            elif [ "$(docker ps -aq -f name=my-app-container)" ]; then
+                # 如果容器存在但没运行，直接重命名
+                docker rename my-app-container my-app-backup
+            fi
             
             # 4. 启动新容器
             docker run -d -p 8080:8080 --name my-app-container $IMAGE_ID:latest
             
-            # === 5. 冒烟测试 (Smoke Test) 🚑 ===
-            echo "Starting application health check..."
-            # 尝试访问内网地址，最多重试 10 次，每次间隔 5 秒
-            curl --fail --retry 10 --retry-delay 5 --retry-connrefused http://10.0.16.8:8080/actuator/health
+            # 5. 冒烟测试 & 自动回滚 🚑
+            echo "Starting health check..."
+            
+            # 尝试访问，如果失败 (||) 则触发回滚
+            if ! curl --fail --retry 10 --retry-delay 5 --retry-connrefused http://10.0.16.8:8080/actuator/health; then
+                echo "❌ Deployment failed! Starting rollback..."
+            
+                # --- 你的回滚逻辑 ---
+                docker stop my-app-container
+                docker rm my-app-container
+            
+                # 恢复备份 (如果备份存在)
+                if [ "$(docker ps -aq -f name=my-app-backup)" ]; then
+                    docker rename my-app-backup my-app-container
+                    docker start my-app-container
+                    echo "✅ Rollback successful. Previous version is up."
+                else
+                    echo "⚠️ No backup found. System is down."
+                fi
+            
+                # 重要：最后必须报错退出，让 GitHub Actions 显示红色❌，通知你有问题
+                exit 1
+            fi
+            
+            # 6. 如果一切正常，删除由于备份产生的旧容器
+            echo "✅ Deployment passed smoke test!"
+            docker rm my-app-backup || true
