@@ -82,7 +82,9 @@ jobs:
             docker pull $IMAGE_ID:latest
             
             # 4. 启动新容器
-            # -d: 后台运行
-            # -p 8080:8080: 端口映射 (根据你的 Spring Boot 配置调整)
-            # --name: 给容器起个固定名字，方便下次停止
             docker run -d -p 8080:8080 --name my-app-container $IMAGE_ID:latest
+            
+            # === 5. 冒烟测试 (Smoke Test) 🚑 ===
+            echo "Starting application health check..."
+            # 尝试访问内网地址，最多重试 10 次，每次间隔 5 秒
+            curl --fail --retry 10 --retry-delay 5 --retry-connrefused http://10.0.16.8:8080/actuator/health
