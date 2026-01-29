@@ -1,0 +1,61 @@
+name: Java CI with Maven
+
+# 1. 触发条件：推送到主分支时触发
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  # === 第一阶段：构建 (Build) ===
+  build:
+    runs-on: ubuntu-latest
+    # 使用包含 Java 25 的容器作为构建环境
+    container:
+      image: eclipse-temurin:25.0.1_8-jdk-ubi10-minimal
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build with Maven
+        run: mvn clean package
+
+      - name: Upload JAR
+        # 把构建好的 JAR 包存起来，传给下一个阶段
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-jar
+          path: target/*.jar
+          retention-days: 1
+
+  # === 第二阶段：部署 (Deploy) ===
+  deploy:
+    needs: build  # 必须等 build 成功后才运行
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write # 允许写入 GHCR
+      contents: read
+    steps:
+      - uses: actions/checkout@v4 # 需要拉取代码仓库中的 Dockerfile
+
+      - name: Download JAR
+        # 下载上一阶段上传的 JAR 包
+        uses: actions/download-artifact@v4
+        with:
+          name: app-jar
+          path: target/  # 放入 target 目录，以匹配 Dockerfile 的 COPY 指令
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and Push Docker Image
+        run: |
+          # 将镜像名转换为小写（Docker 不支持大写）
+          IMAGE_ID=ghcr.io/${{ github.repository_owner }}/my-app
+          IMAGE_ID=$(echo $IMAGE_ID | tr '[A-Z]' '[a-z]')
+          
+          # 构建并推送
+          docker build . --file Dockerfile --tag $IMAGE_ID:latest
+          docker push $IMAGE_ID:latest
