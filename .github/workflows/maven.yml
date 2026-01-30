@@ -114,3 +114,26 @@ jobs:
             # 6. 如果一切正常，删除由于备份产生的旧容器
             echo "✅ Deployment passed smoke test!"
             docker rm my-app-backup || true
+            
+      # === 6. 飞书通知 (Feishu Notification) 📢 ===
+      - name: Send Feishu Notification
+        if: always()  # 👈 关键：无论前面成功还是失败，这步都要跑！
+        env:
+          # 从 Secrets 里读取 webhook 地址
+          WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
+          # 获取当前任务的运行结果 (success, failure, cancelled)
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          echo "Sending notification to Feishu..."
+
+          # 根据状态决定发送什么表情
+          if [ "$JOB_STATUS" == "success" ]; then
+            CONTENT="GitHub Actions: 部署成功！✅ \n项目: ${{ github.repository }}"
+          else
+            CONTENT="GitHub Actions: 部署失败！❌ \n请立即检查日志！🚑 \n项目: ${{ github.repository }}"
+          fi
+
+          # 发送请求 (注意：这里必须包含我们在飞书里设置的关键词 "GitHub")
+          curl -X POST -H "Content-Type: application/json" \
+            -d "{\"msg_type\":\"text\",\"content\":{\"text\":\"$CONTENT\"}}" \
+            $WEBHOOK_URL
