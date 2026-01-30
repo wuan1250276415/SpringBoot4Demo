@@ -34,7 +34,16 @@ jobs:
       packages: write # 允许写入 GHCR
       contents: read
     steps:
-      - uses: actions/checkout@v4 # 需要拉取代码仓库中的 Dockerfile
+      # 1. 检出代码 (修改版)
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 👈 关键：获取所有历史记录，而不只是最新版
+
+      # 2. 敏感信息扫描 (新增) 🕵️‍♂️
+      - name: Secret Scanning (Gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download JAR
         # 下载上一阶段上传的 JAR 包
